@@ -113,7 +113,10 @@ command! DismissReplLog call ReadyDismissReplLog()
 
 function! Doc()
   ReplLog
-  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc', [])
+  call inputsave()
+  let symbol = input('Doc for: ')
+  call inputrestore()
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc', [symbol])
   return res
 endfunction
 
@@ -126,11 +129,26 @@ function! ReadyDoc()
 endfunction
 command! Doc call ReadyDoc()
 
+function! DocCursor()
+  ReplLog
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc-cursor', [])
+  return res
+endfunction
+
+function! ReadyCursorDoc()
+  if g:socket_repl_plugin_ready == 1
+    call DocCursor()
+  else
+    echo s:not_ready
+  endif
+endfunction
+command! DocCursor call ReadyCursorDoc()
+
 if !exists('g:disable_socket_repl_mappings')
+  nnoremap K :DocCursor<cr>
   nnoremap <leader>e :Eval<cr>
   nnoremap <leader>eb :EvalBuffer<cr>
   nnoremap <leader>ef :EvalForm<cr>
-  nnoremap <leader>doc :Doc<cr>
   nnoremap <leader>rlog :ReplLog<cr>
   nnoremap <leader>drlog :DismissReplLog<cr>
 endif
