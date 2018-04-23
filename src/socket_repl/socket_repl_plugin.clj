@@ -145,17 +145,10 @@
       (run-command
         plugin
         (fn [msg]
-          (let [buffer (api/get-current-buf nvim)
-                filename (api.buffer/get-name nvim buffer)]
-            (if (.exists (io/as-file filename))
-              (do
-                ;; Not sure if saving the file is really always what we want,
-                ;; but if we don't, stale data will be loaded.
-                (api/command nvim ":w")
-                (async/>!! code-channel (format "(load-file \"%s\")" filename)))
-              (let [code (string/join "\n" (api.buffer-ext/get-lines
-                                             nvim buffer 0 -1))]
-                (async/>!! code-channel (format "(eval '(do %s))" code))))))))
+          (let [buffer (api/get-current-buf nvim)]
+            (let [code (string/join "\n" (api.buffer-ext/get-lines
+                                           nvim buffer 0 -1))]
+              (async/>!! code-channel (format "(eval '(do %s))" code)))))))
 
     (nvim/register-method!
       nvim
