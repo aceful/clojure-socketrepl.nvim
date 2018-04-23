@@ -50,20 +50,38 @@ function! ReadyEvalBuffer()
 endfunction
 command! EvalBuffer call ReadyEvalBuffer()
 
-function! EvalCode()
+function! EvalForm()
   ReplLog
-  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval-code', [])
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval-form', [])
   return res
 endfunction
 
-function! ReadyEvalCode()
+function! ReadyEvalForm()
   if g:socket_repl_plugin_ready == 1
-    call EvalCode()
+    call EvalForm()
   else
     echo s:not_ready
   endif
 endfunction
-command! EvalCode call ReadyEvalCode()
+command! EvalForm call ReadyEvalForm()
+
+function! Eval()
+  ReplLog
+  call inputsave()
+  let form = input('=> ')
+  call inputrestore()
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval', [form])
+  return res
+endfunction
+
+function! ReadyEval()
+  if g:socket_repl_plugin_ready == 1
+    call Eval()
+  else
+    echo s:not_ready
+  endif
+endfunction
+command! Eval call ReadyEval()
 
 function! ReplLog(buffer_cmd)
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'show-log', a:buffer_cmd)
@@ -109,8 +127,9 @@ endfunction
 command! Doc call ReadyDoc()
 
 if !exists('g:disable_socket_repl_mappings')
+  nnoremap <leader>e :Eval<cr>
   nnoremap <leader>eb :EvalBuffer<cr>
-  nnoremap <leader>ef :EvalCode<cr>
+  nnoremap <leader>ef :EvalForm<cr>
   nnoremap <leader>doc :Doc<cr>
   nnoremap <leader>rlog :ReplLog<cr>
   nnoremap <leader>drlog :DismissReplLog<cr>

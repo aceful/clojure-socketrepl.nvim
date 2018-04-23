@@ -25,7 +25,7 @@
              (str "\n##### PLUGIN ERR #####\n"
                   (.getMessage throwable) "\n"
                   (string/join "\n" (map str (.getStackTrace throwable)))
-                  \n"######################\n")))
+                  "\n######################\n")))
 
 (defn run-command
   [{:keys [nvim nrepl socket-repl]} f]
@@ -111,7 +111,23 @@
 
     (nvim/register-method!
       nvim
-      "eval-code"
+      "eval"
+      (run-command
+        plugin
+        (fn [msg]
+          (try
+            (async/>!! code-channel (parser/read-next
+                                      (-> msg
+                                          message/params
+                                          ffirst)
+                                      0 0))
+            (catch Throwable t
+              (log/error t "Error evaluating form")
+              (write-error repl-log t))))))
+
+    (nvim/register-method!
+      nvim
+      "eval-form"
       (run-command
         plugin
         (fn [msg]
