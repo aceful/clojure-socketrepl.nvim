@@ -175,6 +175,29 @@
 
     (nvim/register-method!
       nvim
+      "source"
+      (run-command
+        plugin
+        (fn [msg]
+          (let [code (format "(clojure.repl/source %s)" (-> msg
+                                                            message/params
+                                                            ffirst))]
+            (async/>!! code-channel code)))))
+
+    (nvim/register-method!
+      nvim
+      "source-cursor"
+      (run-command
+        plugin
+        (fn [msg]
+          (api-ext/get-current-word-async
+            nvim
+            (fn [word]
+              (let [code (format "(clojure.repl/source %s)" word)]
+                (async/>!! code-channel code)))))))
+
+    (nvim/register-method!
+      nvim
       "show-log"
       (run-command
         plugin

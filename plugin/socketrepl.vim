@@ -144,8 +144,42 @@ function! ReadyCursorDoc()
 endfunction
 command! DocCursor call ReadyCursorDoc()
 
+function! Source()
+  ReplLog
+  call inputsave()
+  let symbol = input('Source for: ')
+  call inputrestore()
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'source', [symbol])
+  return res
+endfunction
+
+function! ReadySource()
+  if g:socket_repl_plugin_ready == 1
+    call Source()
+  else
+    echo s:not_ready
+  endif
+endfunction
+command! Source call ReadySource()
+
+function! SourceCursor()
+  ReplLog
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'source-cursor', [])
+  return res
+endfunction
+
+function! ReadyCursorSource()
+  if g:socket_repl_plugin_ready == 1
+    call SourceCursor()
+  else
+    echo s:not_ready
+  endif
+endfunction
+command! SourceCursor call ReadyCursorSource()
+
 if !exists('g:disable_socket_repl_mappings')
   nnoremap K :DocCursor<cr>
+  nnoremap [d :SourceCursor<cr>
   nnoremap <leader>e :Eval<cr>
   nnoremap <leader>eb :EvalBuffer<cr>
   nnoremap <leader>ef :EvalForm<cr>
