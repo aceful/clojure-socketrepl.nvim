@@ -70,7 +70,6 @@
     "plugin"
     (let [mult (async/mult code-channel)]
       (async/tap mult (socket-repl/input-channel socket-repl))
-      (async/tap mult (repl-log/input-channel repl-log))
       (async/tap mult (nrepl/input-channel nrepl)))
 
     ;; Setup plugin functions.

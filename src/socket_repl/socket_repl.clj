@@ -1,8 +1,10 @@
 (ns socket-repl.socket-repl
   "Provides a channel interface to socket repl input and output."
   (:require
+    [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.core.async :as async]
+    [clojure.tools.logging :as log]
     [socket-repl.util :refer [log-start log-stop]])
   (:import
     (java.net Socket)
@@ -74,10 +76,25 @@
     (async/close! input-channel)
     socket-repl))
 
+(defn deep-edn-read-string
+  [edn]
+  (if (string? edn)
+    (let [data (edn/read-string edn)]
+      (cond
+        (map? data) (into {}
+                          (map (juxt (comp deep-edn-read-string first)
+                                     (comp deep-edn-read-string second))
+                               data))
+        (vector? data) (into [] (map deep-edn-read-string data))
+        (list? data) (apply list (map deep-edn-read-string data))
+        (set? data) (into #{} (map deep-edn-read-string data))
+        :else data))
+    edn))
+
 (defn new
   []
   {:input-channel (async/chan 1024)
-   :output-channel (async/chan 1024)
+   :output-channel (async/chan 1024 (map edn/read-string))
    :connection (atom {:host nil
                       :port nil
                       :socket nil
