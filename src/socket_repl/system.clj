@@ -1,5 +1,5 @@
 (ns socket-repl.system
-  "The system created by wiring various components together." 
+  "The system created by wiring various components together."
   (:require
     [clojure.core.async :as async]
     [clojure.tools.logging :as log]
@@ -13,12 +13,14 @@
 (defn new-system*
   [nvim]
   (let [socket-repl (socket-repl/start (socket-repl/new))
+        internal-socket-repl (socket-repl/start (socket-repl/new))
         nrepl (nrepl/start (nrepl/new))
         repl-log (repl-log/start (repl-log/new socket-repl nrepl))
-        plugin (plugin/start (plugin/new nvim nrepl repl-log socket-repl))]
+        plugin (plugin/start (plugin/new nvim nrepl repl-log socket-repl internal-socket-repl))]
     {:nvim nvim
      :repl-log repl-log
      :socket-repl socket-repl
+     :internal-socket-repl internal-socket-repl
      :nrepl nrepl
      :plugin plugin}))
 

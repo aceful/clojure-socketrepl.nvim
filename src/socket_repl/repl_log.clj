@@ -70,5 +70,4 @@
    :file (File/createTempFile "socket-repl" ".txt")
    :print-stream nil
    :input-channel (async/chan 1024 (comp
-                                     (filter #(not= (:tag %) :tap))
                                      (map format-stuff)))})
