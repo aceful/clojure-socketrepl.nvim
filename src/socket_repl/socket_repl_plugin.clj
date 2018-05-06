@@ -5,6 +5,7 @@
     [clojure.core.async :as async]
     [clojure.java.io :as io]
     [clojure.string :as string]
+    [clojure.tools.namespace.find :as namespace.find]
     [clojure.tools.logging :as log]
     [neovim-client.1.api :as api]
     [neovim-client.1.api.buffer :as api.buffer]
@@ -230,6 +231,18 @@
                   (log/info (:ms res))
                   (log/info (:val res))
                   (.close res-chan))))))))
+
+    (nvim/register-method!
+      nvim
+      "eval-buffer-ns"
+      (run-command
+        plugin
+        (fn [msg]
+          (let [buffer-name (api/get-current-buf nvim)
+                file-name (api.buffer/get-name nvim buffer-name)
+                file (io/file file-name)
+                namespace-declarations (namespace.find/find-ns-decls-in-dir file)]
+            (async/>!! (socket-repl/input-channel socket-repl) (first namespace-declarations))))))
 
     (nvim/register-method!
       nvim
