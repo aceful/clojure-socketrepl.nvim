@@ -219,18 +219,18 @@
         plugin
         (fn [msg]
           (let [code-form "(map #(.getAbsolutePath %) (clojure.java.classpath/classpath))"]
-            (log/info msg)
             (async/>!! (socket-repl/input-channel internal-socket-repl)
                        code-form)
-            (log/info "I'm in!")
             (async/thread
               (let [res-chan (async/chan 1 (filter #(= (:form %) code-form)))]
-                (socket-repl/subscribe-output internal-socket-repl res-chan)
-                (let [res (async/<!! res-chan)]
-                  (log/info (:ns res))
-                  (log/info (:ms res))
-                  (log/info (:val res))
-                  (.close res-chan))))))))
+                (try
+                  (socket-repl/subscribe-output internal-socket-repl res-chan)
+                  (let [res (async/<!! res-chan)]
+                    (log/info (:ns res))
+                    (log/info (:ms res))
+                    (log/info (:val res)))
+                  (finally
+                    (.close res-chan)))))))))
 
     (nvim/register-method!
       nvim
