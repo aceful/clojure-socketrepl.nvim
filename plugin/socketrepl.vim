@@ -2,6 +2,7 @@ let s:p_dir = expand('<sfile>:p:h')
 let g:is_running = 0
 let g:socket_repl_plugin_ready = 0
 let g:nvim_tcp_plugin_channel = 0
+let g:eval_entire_ns_decl = 0 " 0 = SwitchBufferNS uses `in-ns`. 1 = SwitchBufferNS evals entire ns declaration
 
 let s:not_ready = "SocketREPL plugin not ready (starting)"
 
@@ -176,6 +177,19 @@ function! ReadyCursorSource()
   endif
 endfunction
 command! SourceCursor call ReadyCursorSource()
+
+function! SwitchBufferNS()
+  call rpcnotify(g:nvim_tcp_plugin_channel, 'switch-buffer-ns', [])
+endfunction
+
+function! ReadySwitchBufferNS()
+  if g:socket_repl_plugin_ready == 1
+    call SwitchBufferNS()
+  else
+    echo s:not_ready
+  endif
+endfunction
+command! SwitchBufferNS call ReadySwitchBufferNS()
 
 if !exists('g:disable_socket_repl_mappings')
   nnoremap K :DocCursor<cr>

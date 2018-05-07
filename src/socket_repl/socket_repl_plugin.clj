@@ -234,15 +234,19 @@
 
     (nvim/register-method!
       nvim
-      "eval-buffer-ns"
+      "switch-buffer-ns"
       (run-command
         plugin
         (fn [msg]
           (let [buffer-name (api/get-current-buf nvim)
                 file-name (api.buffer/get-name nvim buffer-name)
                 file (io/file file-name)
-                namespace-declarations (namespace.find/find-ns-decls-in-dir file)]
-            (async/>!! (socket-repl/input-channel socket-repl) (first namespace-declarations))))))
+                namespace-declaration (first (namespace.find/find-ns-decls-in-dir file))
+                eval-entire-declaration? (= 1 (api/get-var nvim "eval_entire_ns_decl"))
+                code-form (if eval-entire-declaration?
+                            namespace-declaration
+                            `(clojure.core/in-ns '~(second namespace-declaration)))]
+            (async/>!! (socket-repl/input-channel socket-repl) code-form)))))
 
     (nvim/register-method!
       nvim
