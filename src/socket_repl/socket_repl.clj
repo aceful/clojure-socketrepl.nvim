@@ -19,8 +19,8 @@
 
 (defn subscribe-output
   "Pipes the socket repl output to `chan`"
-  [{:keys [output-channel]} chan]
-  (async/pipe output-channel chan))
+  [{:keys [output-mult]} chan]
+  (async/tap output-mult chan))
 
 (defn connect
   "Create a connection to a socket repl."
@@ -93,10 +93,14 @@
 
 (defn new
   []
-  {:input-channel (async/chan 1024)
-   :output-channel (async/chan 1024 (map edn/read-string))
-   :connection (atom {:host nil
-                      :port nil
-                      :socket nil
-                      :reader nil
-                      :print-stream nil})})
+  (let [output-channel (async/chan
+                         (async/sliding-buffer 1)
+                         (map edn/read-string))]
+    {:input-channel (async/chan 1024)
+     :output-channel output-channel
+     :output-mult (async/mult output-channel)
+     :connection (atom {:host nil
+                        :port nil
+                        :socket nil
+                        :reader nil
+                        :print-stream nil})}))

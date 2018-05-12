@@ -3,6 +3,7 @@ let g:is_running = 0
 let g:socket_repl_plugin_ready = 0
 let g:nvim_tcp_plugin_channel = 0
 let g:eval_entire_ns_decl = 0 " 0 = SwitchBufferNS uses `in-ns`. 1 = SwitchBufferNS evals entire ns declaration
+let g:socket_repl_injected = 0
 
 let s:not_ready = "SocketREPL plugin not ready (starting)"
 
@@ -22,7 +23,11 @@ function! Connect(host_colon_port, op_code)
   else
     let conn = a:host_colon_port
   endif
-  let res = rpcnotify(g:nvim_tcp_plugin_channel, a:op_code, conn)
+  let res = rpcrequest(g:nvim_tcp_plugin_channel, a:op_code, conn)
+
+  if l:res == "success"
+    call rpcnotify(g:nvim_tcp_plugin_channel, 'inject', '')
+  endif
   return res
 endfunction
 
@@ -190,6 +195,22 @@ function! ReadySwitchBufferNS()
   endif
 endfunction
 command! SwitchBufferNS call ReadySwitchBufferNS()
+
+function! socketrepl#omnicomplete(findstart, base)
+  if a:findstart
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-initial', [])
+    return l:res
+  else
+    echo a:base
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-matches', a:base)
+    return l:res
+  endif
+endfunction
+
+augroup socketrepl_completion
+  autocmd!
+  autocmd FileType clojure setlocal omnifunc=socketrepl#omnicomplete
+augroup END
 
 if !exists('g:disable_socket_repl_mappings')
   nnoremap K :DocCursor<cr>

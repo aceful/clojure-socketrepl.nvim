@@ -3,11 +3,13 @@
   Neovim."
   (:require
     [clojure.core.async :as async]
+    [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.string :as string]
     [clojure.tools.namespace.find :as namespace.find]
     [clojure.tools.logging :as log]
     [neovim-client.1.api :as api]
+    [neovim-client.1.api.window :as api.window]
     [neovim-client.1.api.buffer :as api.buffer]
     [neovim-client.1.api.buffer-ext :as api.buffer-ext]
     [neovim-client.1.api-ext :as api-ext]
@@ -28,7 +30,7 @@
                   (string/join "\n" (map str (.getStackTrace throwable)))
                   "\n######################\n")))
 
-(defn run-command
+(defn run-command-async
   [{:keys [nvim nrepl socket-repl]} f]
   (fn [msg]
     (if-not (or (socket-repl/connected? socket-repl)
@@ -38,7 +40,17 @@
           nvim ":echo 'Use :Connect host:port to connect to a socket repl'"))
       (async/thread (f msg)))
     ;; Don't return an async channel, return something msg-pack can serialize.
-    :done))
+    "done"))
+
+(defn run-command
+  [{:keys [nvim nrepl socket-repl]} f]
+  (fn [msg]
+    (if-not (or (socket-repl/connected? socket-repl)
+                (nrepl/connected? nrepl))
+      (async/thread
+        (api/command
+          nvim ":echo 'Use :Connect host:port to connect to a socket repl'"))
+      (f msg))))
 
 (defn get-rlog-buffer
   "Returns the buffer w/ b:rlog set, if one exists."
@@ -58,6 +70,51 @@
   [nvim]
   (let [buffer (get-rlog-buffer nvim)]
     (when buffer (api.buffer/get-number nvim buffer))))
+
+(comment
+  (def lines ["  (let [my-fo \"foo\"]"  "    ))"  ""])
+  (def line-delta 1)
+  (def cursor-col (byte 4))
+
+  (edn/read-string (build-context lines line-delta (int cursor-col)))
+
+  (def lines ["(defn fo"
+              "  [foo]"
+              "  (let [f ]))"])
+  (def line-delta 2)
+  (def cursor-col 10)
+  )
+
+(defn build-context
+  [lines line-delta cursor-col]
+  (let [updated-lines (update lines line-delta (fn [line]
+                                                 (-> (into [] line)
+                                                     (update cursor-col #(into [] (str "__prefix__" %)))
+                                                     (flatten)
+                                                     (string/join))))
+        ctx-form (string/join " " updated-lines)]
+    (pr-str ctx-form)))
+
+(defn get-completion-context
+  [nvim word]
+  (let [[cursor-line cursor-col :as cursor-position] (api-ext/get-cursor-location nvim)
+        skip-exp "synIDattr(synID(line(\".\"),col(\".\"),1),\"name\") =~? \"comment\\|string\\|char\\|regexp\""
+        [ctx-start-line ctx-start-col :as ctx-start] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnb" skip-exp])
+        [ctx-end-line ctx-end-col :as ctx-end] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnc" skip-exp])]
+    (if (or
+          (= [0 0] ctx-start)
+          (= [0 0] ctx-end))
+      (do
+        (log/info "Ctx not found")
+        "")
+      (let [buffer (api/get-current-buf nvim)
+            lines (into [] (api.buffer-ext/get-lines nvim buffer (dec ctx-start-line) (inc ctx-end-line)))
+            line-delta (max 0 (- cursor-line ctx-start-line))]
+        (try
+          (build-context lines line-delta (int cursor-col))
+          (catch Exception e
+            (log/info e)
+            nil))))))
 
 (defn code-channel
   [plugin]
@@ -85,24 +142,42 @@
           (try
             (socket-repl/connect socket-repl host port)
             (socket-repl/connect internal-socket-repl host port)
-            (async/>!! (socket-repl/input-channel internal-socket-repl)
-                       '(do
-                          (ns srepl.injection
-                            (:refer-clojure :rename {eval core-eval}))
-                          (defn eval
-                            ([form] (eval form nil))
-                            ([form options]
-                             (let [result (core-eval form)]
-                               (merge
-                                 #:socket-repl{:result (pr-str result)
-                                               :form (pr-str form)}
-                                 options))))))
+            "success"
+
             (catch Throwable t
               (log/error t "Error connecting to socket repl")
               (async/thread (api/command
                               nvim
-                              ":echo 'Unable to connect to socket repl.'"))))
-          :done)))
+                              ":echo 'Unable to connect to socket repl.'"))
+              "failure")))))
+
+    (nvim/register-method!
+      nvim
+    "inject"
+      (fn [msg]
+        (when-not (= 1 (api/get-var nvim "g:socket_repl_injected"))
+          (let [code-form (pr-str '(do
+                                     (ns srepl.injection
+                                       (:require
+                                         [compliment.core :as compliment]))
+
+                                     (defn completions
+                                       [prefix options]
+                                       (compliment/completions prefix options))))
+                res-chan (async/chan 1 (filter #(= (:form %) code-form)))]
+            (try
+              (socket-repl/subscribe-output internal-socket-repl res-chan)
+              (async/>!! (socket-repl/input-channel internal-socket-repl)
+                         code-form)
+              (let [res (async/<!! res-chan)]
+                (log/info (str "inject res: " res))
+                (if (:cause res)
+                  (api/command nvim ":echo 'Error during inject'")
+                  (do
+                    (api/set-var nvim "g:socket_repl_injected" 1)
+                    (api/command nvim ":echo 'Socket REPL injected'"))))
+              (finally
+                (async/close! res-chan)))))))
 
     (nvim/register-method!
       nvim
@@ -125,7 +200,7 @@
     (nvim/register-method!
       nvim
       "eval"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (try
@@ -142,7 +217,7 @@
     (nvim/register-method!
       nvim
       "eval-form"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [[row col] (api-ext/get-cursor-location nvim)
@@ -157,7 +232,7 @@
     (nvim/register-method!
       nvim
       "eval-buffer"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [buffer (api/get-current-buf nvim)]
@@ -169,7 +244,7 @@
     (nvim/register-method!
       nvim
       "doc"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [code (format "(clojure.repl/doc %s)" (-> msg
@@ -180,7 +255,7 @@
     (nvim/register-method!
       nvim
       "doc-cursor"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (api-ext/get-current-word-async
@@ -192,7 +267,7 @@
     (nvim/register-method!
       nvim
       "source"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [code (format "(clojure.repl/source %s)" (-> msg
@@ -203,7 +278,7 @@
     (nvim/register-method!
       nvim
       "source-cursor"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (api-ext/get-current-word-async
@@ -214,8 +289,65 @@
 
     (nvim/register-method!
       nvim
-      "cp"
+      "complete-initial"
       (run-command
+        plugin
+        (fn [msg]
+          (let [line (api/get-current-line nvim)
+                [cursor-row cursor-col] (api-ext/get-cursor-location nvim)]
+            (let [start-col (- cursor-col
+                               (->> line
+                                    (take cursor-col)
+                                    (reverse)
+                                    (take-while #(not (#{\ \(} %)))
+                                    (count)))]
+              start-col)))))
+
+    (nvim/register-method!
+      nvim
+      "complete-matches"
+      (run-command
+        plugin
+        (fn [msg]
+          (let [word (first (message/params msg))
+                context (get-completion-context nvim word)
+                code-form (str "(srepl.injection/completions "
+                               "\"" word "\" "
+                               "{:ns *ns* "
+                               ":context " context
+                               ":extra-metadata #{:arglists :doc}"
+                               "})")
+                res-chan (async/chan 1 (filter #(= (:form %)
+                                                   code-form)))]
+            (try
+              (socket-repl/subscribe-output internal-socket-repl res-chan)
+              (async/>!! (socket-repl/input-channel internal-socket-repl) code-form)
+              (let [[matches timeout] (async/alts!! [res-chan (async/timeout 10000)])
+                    r (map (fn [{:keys [candidate type ns arglists doc] :as match}]
+                             {"word" candidate
+                              "menu" (or (str arglists) (str ns))
+                              "info" (str doc)
+                              "kind" (case type
+                                       :class "t"
+                                       :function "f"
+                                       :keyword "v"
+                                       :local (if arglists "f" "v")
+                                       :macro "d"
+                                       :method "f"
+                                       :namespace "t"
+                                       :resource "t"
+                                       :special-form "d"
+                                       :static-field "m"
+                                       "")})
+                           (edn/read-string (:val matches)))]
+                r)
+              (finally
+                (async/close! res-chan)))))))
+
+    (nvim/register-method!
+      nvim
+      "cp"
+      (run-command-async
         plugin
         (fn [msg]
           (let [code-form "(map #(.getAbsolutePath %) (clojure.java.classpath/classpath))"]
@@ -230,12 +362,12 @@
                     (log/info (:ms res))
                     (log/info (:val res)))
                   (finally
-                    (.close res-chan)))))))))
+                    (async/close! res-chan)))))))))
 
     (nvim/register-method!
       nvim
       "switch-buffer-ns"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [buffer-name (api/get-current-buf nvim)
@@ -246,12 +378,13 @@
                 code-form (if eval-entire-declaration?
                             namespace-declaration
                             `(clojure.core/in-ns '~(second namespace-declaration)))]
-            (async/>!! (socket-repl/input-channel socket-repl) code-form)))))
+            (async/>!! (socket-repl/input-channel socket-repl) code-form)
+            (async/>!! (socket-repl/input-channel internal-socket-repl) code-form)))))
 
     (nvim/register-method!
       nvim
       "show-log"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (let [file (-> repl-log repl-log/file .getAbsolutePath)]
@@ -272,7 +405,7 @@
     (nvim/register-method!
       nvim
       "dismiss-log"
-      (run-command
+      (run-command-async
         plugin
         (fn [msg]
           (api/command
