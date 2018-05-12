@@ -191,6 +191,22 @@ function! ReadySwitchBufferNS()
 endfunction
 command! SwitchBufferNS call ReadySwitchBufferNS()
 
+function! socketrepl#omnicomplete(findstart, base)
+  if a:findstart
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-initial', [])
+    return l:res
+  else
+    echo a:base
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-matches', a:base)
+    return l:res
+  endif
+endfunction
+
+augroup socketrepl_completion
+  autocmd!
+  autocmd FileType clojure setlocal omnifunc=socketrepl#omnicomplete
+augroup END
+
 if !exists('g:disable_socket_repl_mappings')
   nnoremap K :DocCursor<cr>
   nnoremap [d :SourceCursor<cr>
