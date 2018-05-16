@@ -140,24 +140,11 @@
           (let [code-form (pr-str '(do
                                      (ns srepl.injection
                                        (:require
-                                         [clojure.repl :as repl]))
-
-                                     (defonce available-plugins (atom {}))
-
-                                     (declare completions)
+                                         [compliment.core :as compliment]))
 
                                      (defn completions
                                        [prefix options]
-                                       (if
-                                         (:compliment @available-plugins)
-                                         (completions prefix options)
-                                         (repl/apropos prefix)))
-
-                                     (try
-                                       (require '[compliment.core :as compliment :refer [completions]])
-                                       (swap! available-plugins assoc :compliment true)
-                                       (catch Exception e
-                                         nil))))
+                                       (compliment/completions prefix options))))
                 res-chan (async/chan 1 (filter #(= (:form %) code-form)))]
             (try
               (socket-repl/subscribe-output internal-socket-repl res-chan)
