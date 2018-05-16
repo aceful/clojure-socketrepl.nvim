@@ -9,6 +9,7 @@
     [clojure.tools.namespace.find :as namespace.find]
     [clojure.tools.logging :as log]
     [neovim-client.1.api :as api]
+    [neovim-client.1.api.window :as api.window]
     [neovim-client.1.api.buffer :as api.buffer]
     [neovim-client.1.api.buffer-ext :as api.buffer-ext]
     [neovim-client.1.api-ext :as api-ext]
@@ -71,10 +72,31 @@
     (when buffer (api.buffer/get-number nvim buffer))))
 
 (defn get-completion-context
-  [nvim]
-  (let [skip-exp "synIDattr(synID(line(\".\"),col(\".\"),1),\"name\") =~? \"comment\\|string\\|char\\|regexp\""
-        ctx-start (api/call-function "searchpairpos" ["(" "" ")" "Wrnb" skip-exp])
-        ctx-start-here (api/call-function "searchpairpos" ["(" "" ")" "Wrnc" skip-exp])]))
+  [nvim word]
+  (let [[cursor-line cursor-col :as cursor-position] (api-ext/get-cursor-location nvim)
+        _ (log/info (str "cursor-position: " (vec cursor-position)))
+        skip-exp "synIDattr(synID(line(\".\"),col(\".\"),1),\"name\") =~? \"comment\\|string\\|char\\|regexp\""
+        [ctx-start-line ctx-start-col :as ctx-start] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnb" skip-exp])
+        [ctx-end-line ctx-end-col :as ctx-end] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnc" skip-exp])]
+    (log/info (str "ctx-start: " (vec ctx-start)))
+    (if (or
+          (= [0 0] ctx-start)
+          (= [0 0] ctx-end))
+      (do
+        (log/info "Ctx not found")
+        "")
+      (do
+        (let [buffer (api/get-current-buf nvim)
+              _ (log/info (str "buffer: " buffer))
+              lines (into [] (api.buffer-ext/get-lines nvim buffer ctx-start-line (inc ctx-end-line)))
+              _ (log/info (str "lines: " lines))
+              line-delta (max 0 (dec (- cursor-line ctx-start-line)))
+              _ (log/info (str "line-delta: " line-delta))
+              updated-lines (update-in lines [line-delta] string/replace word "__prefix__")
+              _ (log/info (str "updated-lines: " updated-lines))
+              ctx-form (string/join "\n" updated-lines)]
+          (log/info (str "ctx-form: " ctx-form))
+          ctx-form)))))
 
 (defn code-channel
   [plugin]
@@ -102,32 +124,54 @@
           (try
             (socket-repl/connect socket-repl host port)
             (socket-repl/connect internal-socket-repl host port)
-            (async/>!! (socket-repl/input-channel internal-socket-repl)
-                       '(do
-                          (ns srepl.injection
-                            (:require
-                              [clojure.repl :as repl]))
 
-                          (defonce available-plugins (atom {}))
-
-                          (try
-                            (require '[compliment.core :as compliment])
-                            (swap! available-plugins assoc :compliment true)
-                            (catch Exception e
-                              nil))
-
-                          (defn completions
-                            [prefix options]
-                            (if
-                              (:compliment @available-plugins)
-                              (compliment/completions prefix options)
-                              (repl/apropos prefix)))))
             (catch Throwable t
               (log/error t "Error connecting to socket repl")
               (async/thread (api/command
                               nvim
                               ":echo 'Unable to connect to socket repl.'"))))
           :done)))
+
+    (nvim/register-method!
+      nvim
+      "inject"
+      (fn [msg]
+        (when-not (= 1 (api/get-var nvim "g:socket_repl_injected"))
+          (let [code-form (pr-str '(do
+                                     (ns srepl.injection
+                                       (:require
+                                         [clojure.repl :as repl]))
+
+                                     (defonce available-plugins (atom {}))
+
+                                     (declare completions)
+
+                                     (defn completions
+                                       [prefix options]
+                                       (if
+                                         (:compliment @available-plugins)
+                                         (completions prefix options)
+                                         (repl/apropos prefix)))
+
+                                     (try
+                                       (require '[compliment.core :as compliment :refer [completions]])
+                                       (swap! available-plugins assoc :compliment true)
+                                       (catch Exception e
+                                         nil))))
+                res-chan (async/chan 1 (filter #(= (:form %) code-form)))]
+            (try
+              (socket-repl/subscribe-output internal-socket-repl res-chan)
+              (async/>!! (socket-repl/input-channel internal-socket-repl)
+                         code-form)
+              (let [res (async/<!! res-chan)]
+                (log/info (str "inject res: " res))
+                (if (:cause res)
+                  (api/command nvim ":echo 'Error during inject'")
+                  (do
+                    (api/set-var nvim "g:socket_repl_injected" 1)
+                    (api/command nvim ":echo 'Socket REPL injected'"))))
+              (finally
+                (async/close! res-chan)))))))
 
     (nvim/register-method!
       nvim
@@ -260,13 +304,14 @@
         plugin
         (fn [msg]
           (let [word (first (message/params msg))
-                context (get-completion-context nvim)
-                code-form (pr-str
+                context (get-completion-context nvim word)
+                _ (log/info (str "context: " context))
+                #_code-form #_(pr-str
                             `(srepl.injection/completions
                                ~word
                                {:ns *ns*
                                 :context ~context}))
-                #_code-form #_(str "(srepl.injection/completions "
+                code-form (str "(srepl.injection/completions "
                                "\"" word "\" "
                                "{:ns *ns*})")
                 res-chan (async/chan 1 (filter #(= (:form %)

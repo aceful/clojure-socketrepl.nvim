@@ -3,6 +3,7 @@ let g:is_running = 0
 let g:socket_repl_plugin_ready = 0
 let g:nvim_tcp_plugin_channel = 0
 let g:eval_entire_ns_decl = 0 " 0 = SwitchBufferNS uses `in-ns`. 1 = SwitchBufferNS evals entire ns declaration
+let g:socket_repl_injected = 0
 
 let s:not_ready = "SocketREPL plugin not ready (starting)"
 
@@ -23,6 +24,7 @@ function! Connect(host_colon_port, op_code)
     let conn = a:host_colon_port
   endif
   let res = rpcnotify(g:nvim_tcp_plugin_channel, a:op_code, conn)
+  call rpcnotify(g:nvim_tcp_plugin_channel, 'inject', '')
   return res
 endfunction
 
