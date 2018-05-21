@@ -24,7 +24,10 @@ function! Connect(host_colon_port, op_code)
     let conn = a:host_colon_port
   endif
   let res = rpcrequest(g:nvim_tcp_plugin_channel, a:op_code, conn)
-  call rpcnotify(g:nvim_tcp_plugin_channel, 'inject', '')
+
+  if l:res == "success"
+    call rpcnotify(g:nvim_tcp_plugin_channel, 'inject', '')
+  endif
   return res
 endfunction
 

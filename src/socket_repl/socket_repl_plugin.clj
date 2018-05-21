@@ -71,6 +71,37 @@
   (let [buffer (get-rlog-buffer nvim)]
     (when buffer (api.buffer/get-number nvim buffer))))
 
+(comment
+  (def lines ["  (let [my-fo \"foo\"]"  "    ))"  ""])
+  (def line-delta 1)
+  (def cursor-col (byte 4))
+
+  (edn/read-string (build-context lines line-delta (int cursor-col)))
+
+  (def lines ["(defn fo"
+              "  [foo]"
+              "  (let [f ]))"])
+  (def line-delta 2)
+  (def cursor-col 10)
+  )
+
+(comment
+  (let [foo :x]
+    ))
+
+(defn build-context
+  [lines line-delta cursor-col]
+  (log/info (str "(type line-delta): " (type line-delta)))
+  (log/info (str "(type cursor-col): " (type cursor-col)))
+  (let [updated-lines (update lines line-delta (fn [line]
+                                                 (-> (into [] line)
+                                                     (update cursor-col #(into [] (str "__prefix__" %)))
+                                                     (flatten)
+                                                     (string/join))))
+        ctx-form (edn/read-string (string/join "\n" updated-lines))]
+    (log/info (str "ctx-form: " ctx-form))
+    ctx-form))
+
 (defn get-completion-context
   [nvim word]
   (let [[cursor-line cursor-col :as cursor-position] (api-ext/get-cursor-location nvim)
@@ -85,18 +116,17 @@
       (do
         (log/info "Ctx not found")
         "")
-      (do
-        (let [buffer (api/get-current-buf nvim)
-              _ (log/info (str "buffer: " buffer))
-              lines (into [] (api.buffer-ext/get-lines nvim buffer ctx-start-line (inc ctx-end-line)))
-              _ (log/info (str "lines: " lines))
-              line-delta (max 0 (dec (- cursor-line ctx-start-line)))
-              _ (log/info (str "line-delta: " line-delta))
-              updated-lines (update-in lines [line-delta] string/replace word "__prefix__")
-              _ (log/info (str "updated-lines: " updated-lines))
-              ctx-form (string/join "\n" updated-lines)]
-          (log/info (str "ctx-form: " ctx-form))
-          ctx-form)))))
+      (let [buffer (api/get-current-buf nvim)
+            _ (log/info (str "buffer: " buffer))
+            lines (into [] (api.buffer-ext/get-lines nvim buffer ctx-start-line (inc ctx-end-line)))
+            _ (log/info (str "lines: " lines))
+            line-delta (max 0 (dec (- cursor-line ctx-start-line)))
+            _ (log/info (str "line-delta: " line-delta))]
+        (try
+          (build-context lines line-delta (int cursor-col))
+          (catch Exception e
+            (log/info e)
+            nil))))))
 
 (defn code-channel
   [plugin]
@@ -124,17 +154,18 @@
           (try
             (socket-repl/connect socket-repl host port)
             (socket-repl/connect internal-socket-repl host port)
+            "success"
 
             (catch Throwable t
               (log/error t "Error connecting to socket repl")
               (async/thread (api/command
                               nvim
-                              ":echo 'Unable to connect to socket repl.'"))))
-          :done)))
+                              ":echo 'Unable to connect to socket repl.'"))
+              "failure")))))
 
     (nvim/register-method!
       nvim
-      "inject"
+    "inject"
       (fn [msg]
         (when-not (= 1 (api/get-var nvim "g:socket_repl_injected"))
           (let [code-form (pr-str '(do
@@ -300,15 +331,23 @@
                                 :context ~context}))
                 code-form (str "(srepl.injection/completions "
                                "\"" word "\" "
-                               "{:ns *ns*})")
+                               "{:ns *ns* "
+                               ":context '" context
+                               "})")
+                _ (log/info (str "code-form: " code-form))
                 res-chan (async/chan 1 (filter #(= (:form %)
                                                    code-form)))]
             (try
+              (log/info (str "Subscribing to internal REPL client"))
               (socket-repl/subscribe-output internal-socket-repl res-chan)
+              (log/info (str "Awaiting result"))
               (async/>!! (socket-repl/input-channel internal-socket-repl) code-form)
-              (let [matches (async/<!! res-chan)
+              (log/info (str "Computing matches"))
+
+              (let [[matches timeout] (async/alts!! [res-chan (async/timeout 10000)])
+                    _ (log/info (str "matches: " matches))
                     r (map (fn [{:keys [candidate type ns] :as match}]
-                             (log/info (str "Match: " match))
+                             (log/info (str "match: " match))
                              {"word" candidate
                               "menu" ns
                               "kind" (case type
