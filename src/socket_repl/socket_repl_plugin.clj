@@ -311,31 +311,18 @@
         (fn [msg]
           (let [word (first (message/params msg))
                 context (get-completion-context nvim word)
-                _ (log/info (str "context: " context))
-                #_code-form #_(pr-str
-                            `(srepl.injection/completions
-                               ~word
-                               {:ns *ns*
-                                :context ~context}))
                 code-form (str "(srepl.injection/completions "
                                "\"" word "\" "
                                "{:ns *ns* "
                                ":context " context
                                "})")
-                _ (log/info (str "code-form: " code-form))
                 res-chan (async/chan 1 (filter #(= (:form %)
                                                    code-form)))]
             (try
-              (log/info (str "Subscribing to internal REPL client"))
               (socket-repl/subscribe-output internal-socket-repl res-chan)
-              (log/info (str "Awaiting result"))
               (async/>!! (socket-repl/input-channel internal-socket-repl) code-form)
-              (log/info (str "Computing matches"))
-
               (let [[matches timeout] (async/alts!! [res-chan (async/timeout 10000)])
-                    _ (log/info (str "matches: " matches))
                     r (map (fn [{:keys [candidate type ns] :as match}]
-                             (log/info (str "match: " match))
                              {"word" candidate
                               "menu" ns
                               "kind" (case type
