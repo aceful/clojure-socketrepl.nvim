@@ -85,31 +85,22 @@
   (def cursor-col 10)
   )
 
-(comment
-  (let [foo :x]
-    ))
-
 (defn build-context
   [lines line-delta cursor-col]
-  (log/info (str "(type line-delta): " (type line-delta)))
-  (log/info (str "(type cursor-col): " (type cursor-col)))
   (let [updated-lines (update lines line-delta (fn [line]
                                                  (-> (into [] line)
                                                      (update cursor-col #(into [] (str "__prefix__" %)))
                                                      (flatten)
                                                      (string/join))))
-        ctx-form (edn/read-string (string/join "\n" updated-lines))]
-    (log/info (str "ctx-form: " ctx-form))
-    ctx-form))
+        ctx-form (string/join " " updated-lines)]
+    (pr-str ctx-form)))
 
 (defn get-completion-context
   [nvim word]
   (let [[cursor-line cursor-col :as cursor-position] (api-ext/get-cursor-location nvim)
-        _ (log/info (str "cursor-position: " (vec cursor-position)))
         skip-exp "synIDattr(synID(line(\".\"),col(\".\"),1),\"name\") =~? \"comment\\|string\\|char\\|regexp\""
         [ctx-start-line ctx-start-col :as ctx-start] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnb" skip-exp])
         [ctx-end-line ctx-end-col :as ctx-end] (api/call-function nvim "searchpairpos" ["(" "" ")" "Wrnc" skip-exp])]
-    (log/info (str "ctx-start: " (vec ctx-start)))
     (if (or
           (= [0 0] ctx-start)
           (= [0 0] ctx-end))
@@ -117,11 +108,8 @@
         (log/info "Ctx not found")
         "")
       (let [buffer (api/get-current-buf nvim)
-            _ (log/info (str "buffer: " buffer))
-            lines (into [] (api.buffer-ext/get-lines nvim buffer ctx-start-line (inc ctx-end-line)))
-            _ (log/info (str "lines: " lines))
-            line-delta (max 0 (dec (- cursor-line ctx-start-line)))
-            _ (log/info (str "line-delta: " line-delta))]
+            lines (into [] (api.buffer-ext/get-lines nvim buffer (dec ctx-start-line) (inc ctx-end-line)))
+            line-delta (max 0 (- cursor-line ctx-start-line))]
         (try
           (build-context lines line-delta (int cursor-col))
           (catch Exception e
@@ -332,7 +320,7 @@
                 code-form (str "(srepl.injection/completions "
                                "\"" word "\" "
                                "{:ns *ns* "
-                               ":context '" context
+                               ":context " context
                                "})")
                 _ (log/info (str "code-form: " code-form))
                 res-chan (async/chan 1 (filter #(= (:form %)
