@@ -315,6 +315,7 @@
                                "\"" word "\" "
                                "{:ns *ns* "
                                ":context " context
+                               ":extra-metadata #{:arglists :doc}"
                                "})")
                 res-chan (async/chan 1 (filter #(= (:form %)
                                                    code-form)))]
@@ -322,18 +323,20 @@
               (socket-repl/subscribe-output internal-socket-repl res-chan)
               (async/>!! (socket-repl/input-channel internal-socket-repl) code-form)
               (let [[matches timeout] (async/alts!! [res-chan (async/timeout 10000)])
-                    r (map (fn [{:keys [candidate type ns] :as match}]
+                    r (map (fn [{:keys [candidate type ns arglists doc] :as match}]
                              {"word" candidate
-                              "menu" ns
+                              "menu" (or (str arglists) (str ns))
+                              "info" (str doc)
                               "kind" (case type
-                                       :function "f"
-                                       :special-form "d"
                                        :class "t"
-                                       :local "v"
+                                       :function "f"
                                        :keyword "v"
-                                       :resource "t"
-                                       :namespace "t"
+                                       :local (if arglists "f" "v")
+                                       :macro "d"
                                        :method "f"
+                                       :namespace "t"
+                                       :resource "t"
+                                       :special-form "d"
                                        :static-field "m"
                                        "")})
                            (edn/read-string (:val matches)))]
