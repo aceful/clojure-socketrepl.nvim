@@ -71,20 +71,6 @@
   (let [buffer (get-rlog-buffer nvim)]
     (when buffer (api.buffer/get-number nvim buffer))))
 
-(comment
-  (def lines ["  (let [my-fo \"foo\"]"  "    ))"  ""])
-  (def line-delta 1)
-  (def cursor-col (byte 4))
-
-  (edn/read-string (build-context lines line-delta (int cursor-col)))
-
-  (def lines ["(defn fo"
-              "  [foo]"
-              "  (let [f ]))"])
-  (def line-delta 2)
-  (def cursor-col 10)
-  )
-
 (defn build-context
   [lines line-delta cursor-col]
   (let [updated-lines (update lines line-delta (fn [line]
@@ -343,26 +329,6 @@
                 r)
               (finally
                 (async/close! res-chan)))))))
-
-    (nvim/register-method!
-      nvim
-      "cp"
-      (run-command-async
-        plugin
-        (fn [msg]
-          (let [code-form "(map #(.getAbsolutePath %) (clojure.java.classpath/classpath))"]
-            (async/>!! (socket-repl/input-channel internal-socket-repl)
-                       code-form)
-            (async/thread
-              (let [res-chan (async/chan 1 (filter #(= (:form %) code-form)))]
-                (try
-                  (socket-repl/subscribe-output internal-socket-repl res-chan)
-                  (let [res (async/<!! res-chan)]
-                    (log/info (:ns res))
-                    (log/info (:ms res))
-                    (log/info (:val res)))
-                  (finally
-                    (async/close! res-chan)))))))))
 
     (nvim/register-method!
       nvim
