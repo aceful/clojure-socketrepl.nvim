@@ -2,10 +2,21 @@ let s:p_dir = expand('<sfile>:p:h')
 let g:is_running = 0
 let g:socket_repl_plugin_ready = 0
 let g:nvim_tcp_plugin_channel = 0
-let g:eval_entire_ns_decl = 0 " 0 = SwitchBufferNS uses `in-ns`. 1 = SwitchBufferNS evals entire ns declaration
+let g:eval_entire_ns_decl = 1 " 0 = SwitchBufferNS uses `in-ns`. 1 = SwitchBufferNS evals entire ns declaration
 let g:socket_repl_injected = 0
 
 let s:not_ready = "SocketREPL plugin not ready (starting)"
+
+function! socketrepl#omnicomplete(findstart, base)
+  if a:findstart
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-initial', [])
+    return l:res
+  else
+    echo a:base
+    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-matches', a:base)
+    return l:res
+  endif
+endfunction
 
 function! StartIfNotRunning()
   if g:is_running == 0
@@ -71,10 +82,17 @@ function! ReadyEvalForm()
 endfunction
 command! EvalForm call ReadyEvalForm()
 
+" Thanks vim-fireplace!
+function! socketrepl#eval_complete(A, L, P) abort
+  let prefix = matchstr(a:A, '\%(.* \|^\)\%(#\=[\[{('']\)*')
+  let keyword = a:A[strlen(prefix) : -1]
+  return sort(map(socketrepl#omnicomplete(0, keyword), 'prefix . v:val.word'))
+endfunction
+
 function! Eval()
   ReplLog
   call inputsave()
-  let form = input('=> ')
+  let form = input('=> ', '', 'customlist,socketrepl#eval_complete')
   call inputrestore()
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval', [form])
   return res
@@ -117,23 +135,20 @@ function! ReadyDismissReplLog()
 endfunction
 command! DismissReplLog call ReadyDismissReplLog()
 
-function! Doc()
+function! s:Doc(symbol)
   ReplLog
-  call inputsave()
-  let symbol = input('Doc for: ')
-  call inputrestore()
-  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc', [symbol])
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc', [a:symbol])
   return res
 endfunction
 
-function! ReadyDoc()
+function! s:ReadyDoc(symbol)
   if g:socket_repl_plugin_ready == 1
-    call Doc()
+    call s:Doc(a:symbol)
   else
     echo s:not_ready
   endif
 endfunction
-command! Doc call ReadyDoc()
+command! -bar -nargs=1 -complete=customlist,socketrepl#eval_complete Doc :exe s:ReadyDoc(<q-args>)
 
 function! DocCursor()
   ReplLog
@@ -195,17 +210,6 @@ function! ReadySwitchBufferNS()
   endif
 endfunction
 command! SwitchBufferNS call ReadySwitchBufferNS()
-
-function! socketrepl#omnicomplete(findstart, base)
-  if a:findstart
-    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-initial', [])
-    return l:res
-  else
-    echo a:base
-    let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-matches', a:base)
-    return l:res
-  endif
-endfunction
 
 augroup socketrepl_completion
   autocmd!
