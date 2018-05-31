@@ -165,23 +165,21 @@ function! s:ReadyCursorDoc()
 endfunction
 command! DocCursor call s:ReadyCursorDoc()
 
-function! s:Source()
+function! s:Source(symbol)
   ReplLog
-  call inputsave()
-  let symbol = input('Source for: ')
-  call inputrestore()
-  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'source', [symbol])
+  let res = rpcnotify(g:nvim_tcp_plugin_channel, 'source', [a:symbol])
   return res
 endfunction
 
-function! s:ReadySource()
+function! s:ReadySource(symbol)
   if g:socket_repl_plugin_ready == 1
-    call s:Source()
+    call s:Source(a:symbol)
   else
     echo s:not_ready
   endif
 endfunction
 command! Source call s:ReadySource()
+command! -bar -nargs=1 -complete=customlist,socketrepl#eval_complete Source :exe s:ReadySource(<q-args>)
 
 function! s:SourceCursor()
   ReplLog
