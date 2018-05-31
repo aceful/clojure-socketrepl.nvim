@@ -92,7 +92,7 @@
           (= [0 0] ctx-end))
       (do
         (log/info "Ctx not found")
-        "")
+        nil)
       (let [buffer (api/get-current-buf nvim)
             lines (into [] (api.buffer-ext/get-lines nvim buffer (dec ctx-start-line) (inc ctx-end-line)))
             line-delta (max 0 (- cursor-line ctx-start-line))]
@@ -300,7 +300,7 @@
                 code-form (str "(srepl.injection/completions "
                                "\"" word "\" "
                                "{:ns *ns* "
-                               ":context " context
+                               (when context (str ":context " context))
                                ":extra-metadata #{:arglists :doc}"
                                "})")
                 res-chan (async/chan 1 (filter #(= (:form %)
