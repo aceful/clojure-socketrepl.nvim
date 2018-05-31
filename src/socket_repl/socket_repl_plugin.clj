@@ -314,16 +314,16 @@
                               "menu" (or (str arglists) (str ns))
                               "info" (str doc)
                               "kind" (case type
-                                       :class "t"
+                                       :class "c"
                                        :function "f"
-                                       :keyword "v"
+                                       :keyword "k"
                                        :local (if arglists "f" "v")
-                                       :macro "d"
+                                       :macro "m"
                                        :method "f"
-                                       :namespace "t"
-                                       :resource "t"
-                                       :special-form "d"
-                                       :static-field "m"
+                                       :namespace "n"
+                                       :resource "r"
+                                       :special-form "s"
+                                       :static-field "l"
                                        "")})
                            (edn/read-string (:val matches)))]
                 r)
