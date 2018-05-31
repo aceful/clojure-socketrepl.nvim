@@ -18,7 +18,7 @@ function! socketrepl#omnicomplete(findstart, base)
   endif
 endfunction
 
-function! StartIfNotRunning()
+function! s:StartIfNotRunning()
   if g:is_running == 0
     echo 'Starting SocketREPL plugin...'
     let jar_file_path = s:p_dir . '/../' . 'socket-repl-plugin-0.1.0-standalone.jar'
@@ -26,9 +26,9 @@ function! StartIfNotRunning()
     let g:is_running = 1
   endif
 endfunction
-command! Start call StartIfNotRunning()
+command! Start call s:StartIfNotRunning()
 
-function! Connect(host_colon_port, op_code)
+function! s:Connect(host_colon_port, op_code)
   if a:host_colon_port == ""
     let conn = "localhost:5555"
   else
@@ -42,45 +42,45 @@ function! Connect(host_colon_port, op_code)
   return res
 endfunction
 
-function! ReadyConnect(host_colon_port, op_code)
+function! s:ReadyConnect(host_colon_port, op_code)
   if g:socket_repl_plugin_ready == 1
-    call Connect(a:host_colon_port, a:op_code)
+    call s:Connect(a:host_colon_port, a:op_code)
   else
     echo s:not_ready
   endif
 endfunction
-command! -nargs=? Connect call ReadyConnect("<args>", "connect")
-command! -nargs=? NConnect call ReadyConnect("<args>", "connect-nrepl")
+command! -nargs=? Connect call s:ReadyConnect("<args>", "connect")
+command! -nargs=? NConnect call s:ReadyConnect("<args>", "connect-nrepl")
 
-function! EvalBuffer()
+function! s:EvalBuffer()
   ReplLog
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval-buffer', [])
   return res
 endfunction
 
-function! ReadyEvalBuffer()
+function! s:ReadyEvalBuffer()
   if g:socket_repl_plugin_ready == 1
-    call EvalBuffer()
+    call s:EvalBuffer()
   else
     echo s:not_ready
   endif
 endfunction
-command! EvalBuffer call ReadyEvalBuffer()
+command! EvalBuffer call s:ReadyEvalBuffer()
 
-function! EvalForm()
+function! s:EvalForm()
   ReplLog
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'eval-form', [])
   return res
 endfunction
 
-function! ReadyEvalForm()
+function! s:ReadyEvalForm()
   if g:socket_repl_plugin_ready == 1
-    call EvalForm()
+    call s:EvalForm()
   else
     echo s:not_ready
   endif
 endfunction
-command! EvalForm call ReadyEvalForm()
+command! EvalForm call s:ReadyEvalForm()
 
 " Thanks vim-fireplace!
 function! socketrepl#eval_complete(A, L, P) abort
@@ -89,7 +89,7 @@ function! socketrepl#eval_complete(A, L, P) abort
   return sort(map(socketrepl#omnicomplete(0, keyword), 'prefix . v:val.word'))
 endfunction
 
-function! Eval()
+function! s:Eval()
   ReplLog
   call inputsave()
   let form = input('=> ', '', 'customlist,socketrepl#eval_complete')
@@ -98,42 +98,42 @@ function! Eval()
   return res
 endfunction
 
-function! ReadyEval()
+function! s:ReadyEval()
   if g:socket_repl_plugin_ready == 1
-    call Eval()
+    call s:Eval()
   else
     echo s:not_ready
   endif
 endfunction
-command! Eval call ReadyEval()
+command! Eval call s:ReadyEval()
 
-function! ReplLog(buffer_cmd)
+function! s:ReplLog(buffer_cmd)
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'show-log', a:buffer_cmd)
   return res
 endfunction
 
-function! ReadyReplLog(buffer_cmd)
+function! s:ReadyReplLog(buffer_cmd)
   if g:socket_repl_plugin_ready == 1
-    call ReplLog(a:buffer_cmd)
+    call s:ReplLog(a:buffer_cmd)
   else
     echo s:not_ready
   endif
 endfunction
-command! ReplLog call ReadyReplLog(':botright new')
+command! ReplLog call s:ReadyReplLog(':botright new')
 
-function! DismissReplLog()
+function! s:DismissReplLog()
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'dismiss-log', [])
   return res
 endfunction
 
-function! ReadyDismissReplLog()
+function! s:ReadyDismissReplLog()
   if g:socket_repl_plugin_ready == 1
-    call DismissReplLog()
+    call s:DismissReplLog()
   else
     echo s:not_ready
   endif
 endfunction
-command! DismissReplLog call ReadyDismissReplLog()
+command! DismissReplLog call s:ReadyDismissReplLog()
 
 function! s:Doc(symbol)
   ReplLog
@@ -150,22 +150,22 @@ function! s:ReadyDoc(symbol)
 endfunction
 command! -bar -nargs=1 -complete=customlist,socketrepl#eval_complete Doc :exe s:ReadyDoc(<q-args>)
 
-function! DocCursor()
+function! s:DocCursor()
   ReplLog
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'doc-cursor', [])
   return res
 endfunction
 
-function! ReadyCursorDoc()
+function! s:ReadyCursorDoc()
   if g:socket_repl_plugin_ready == 1
-    call DocCursor()
+    call s:DocCursor()
   else
     echo s:not_ready
   endif
 endfunction
-command! DocCursor call ReadyCursorDoc()
+command! DocCursor call s:ReadyCursorDoc()
 
-function! Source()
+function! s:Source()
   ReplLog
   call inputsave()
   let symbol = input('Source for: ')
@@ -174,42 +174,42 @@ function! Source()
   return res
 endfunction
 
-function! ReadySource()
+function! s:ReadySource()
   if g:socket_repl_plugin_ready == 1
-    call Source()
+    call s:Source()
   else
     echo s:not_ready
   endif
 endfunction
-command! Source call ReadySource()
+command! Source call s:ReadySource()
 
-function! SourceCursor()
+function! s:SourceCursor()
   ReplLog
   let res = rpcnotify(g:nvim_tcp_plugin_channel, 'source-cursor', [])
   return res
 endfunction
 
-function! ReadyCursorSource()
+function! s:ReadyCursorSource()
   if g:socket_repl_plugin_ready == 1
-    call SourceCursor()
+    call s:SourceCursor()
   else
     echo s:not_ready
   endif
 endfunction
-command! SourceCursor call ReadyCursorSource()
+command! SourceCursor call s:ReadyCursorSource()
 
-function! SwitchBufferNS()
+function! s:SwitchBufferNS()
   call rpcnotify(g:nvim_tcp_plugin_channel, 'switch-buffer-ns', [])
 endfunction
 
-function! ReadySwitchBufferNS()
+function! s:ReadySwitchBufferNS()
   if g:socket_repl_plugin_ready == 1
-    call SwitchBufferNS()
+    call s:SwitchBufferNS()
   else
     echo s:not_ready
   endif
 endfunction
-command! SwitchBufferNS call ReadySwitchBufferNS()
+command! SwitchBufferNS call s:ReadySwitchBufferNS()
 
 augroup socketrepl_completion
   autocmd!
@@ -228,6 +228,6 @@ endif
 
 if !exists('g:manually_start_socket_repl_plugin')
   if has("nvim")
-    call StartIfNotRunning()
+    call s:StartIfNotRunning()
   endif
 endif
