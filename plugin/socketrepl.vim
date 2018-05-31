@@ -214,6 +214,11 @@ augroup socketrepl_completion
   autocmd FileType clojure setlocal omnifunc=socketrepl#omnicomplete
 augroup END
 
+augroup socketrepl_ns
+  autocmd!
+  autocmd BufRead,BufWrite *.clj* SwitchBufferNS
+augroup END
+
 if !exists('g:disable_socket_repl_mappings')
   nnoremap K :DocCursor<cr>
   nnoremap [d :SourceCursor<cr>
