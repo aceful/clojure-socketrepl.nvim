@@ -12,7 +12,6 @@ function! socketrepl#omnicomplete(findstart, base)
     let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-initial', [])
     return l:res
   else
-    echo a:base
     let res = rpcrequest(g:nvim_tcp_plugin_channel, 'complete-matches', a:base)
     return l:res
   endif
